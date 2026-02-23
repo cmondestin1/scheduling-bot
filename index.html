@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowState | Minimal Planner</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>FlowState</h1>
+            <p id="date-display"></p>
+        </header>
+
+        <section class="input-group">
+            <input type="text" id="main-input" placeholder="What's on your mind? (Event, Task, or Note)">
+            <div class="controls">
+                <select id="category-select">
+                    <option value="task">Task</option>
+                    <option value="event">Event</option>
+                    <option value="reminder">Reminder</option>
+                    <option value="note">Note</option>
+                </select>
+                <select id="label-select">
+                    <option value="personal">Personal</option>
+                    <option value="work">Work</option>
+                    <option value="urgent">Urgent</option>
+                </select>
+                <button id="add-btn">Add to Flow</button>
+            </div>
+        </section>
+
+        <main id="flow-container">
+            </main>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
