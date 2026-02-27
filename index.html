@@ -1,39 +1,294 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FlowState | Minimal Planner</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>APEX — Command Center</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=JetBrains+Mono:wght@300;400;500;700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet" />
 </head>
 <body>
-    <div id="app">
-        <header>
-            <h1>FlowState</h1>
-            <p id="date-display"></p>
-        </header>
 
-        <section class="input-group">
-            <input type="text" id="main-input" placeholder="What's on your mind? (Event, Task, or Note)">
-            <div class="controls">
-                <select id="category-select">
-                    <option value="task">Task</option>
-                    <option value="event">Event</option>
-                    <option value="reminder">Reminder</option>
-                    <option value="note">Note</option>
-                </select>
-                <select id="label-select">
-                    <option value="personal">Personal</option>
-                    <option value="work">Work</option>
-                    <option value="urgent">Urgent</option>
-                </select>
-                <button id="add-btn">Add to Flow</button>
-            </div>
-        </section>
-
-        <main id="flow-container">
-            </main>
+  <!-- LEFT SIDEBAR (Fantastical-inspired) -->
+  <aside id="sidebar">
+    <div id="sidebar-brand">
+      <span class="brand-mark">▲</span>
+      <div class="brand-text">
+        <span class="brand-name">APEX</span>
+        <span class="brand-tagline">Command Center</span>
+      </div>
     </div>
-    <script src="script.js"></script>
+
+    <div id="sidebar-clock">
+      <div id="sb-time"></div>
+      <div id="sb-date"></div>
+    </div>
+
+    <!-- Mini Calendar -->
+    <div id="mini-cal">
+      <div class="mini-cal-header">
+        <button class="mc-nav" id="mc-prev">‹</button>
+        <span id="mc-label"></span>
+        <button class="mc-nav" id="mc-next">›</button>
+      </div>
+      <div id="mc-weekdays"></div>
+      <div id="mc-grid"></div>
+    </div>
+
+    <!-- Upcoming agenda list -->
+    <div id="sidebar-agenda">
+      <div class="sb-section-title">UPCOMING</div>
+      <div id="sb-agenda-list"></div>
+    </div>
+
+    <!-- Labels list -->
+    <div id="sidebar-labels">
+      <div class="sb-section-title">LABELS
+        <button class="sb-tiny-btn" id="open-label-manager">⊕</button>
+      </div>
+      <div id="sb-label-list"></div>
+    </div>
+
+    <div id="sidebar-footer">
+      <button class="nav-footer-btn" id="theme-toggle" title="Toggle Theme">◐ Theme</button>
+    </div>
+  </aside>
+
+  <!-- MAIN CALENDAR AREA -->
+  <div id="main">
+
+    <!-- STAT BAR (AmbaSat-inspired) -->
+    <header id="stat-bar">
+      <div class="stat-block">
+        <span class="stat-label">TODAY'S TASKS</span>
+        <span class="stat-value" id="stat-tasks-today">0</span>
+      </div>
+      <div class="stat-sep"></div>
+      <div class="stat-block">
+        <span class="stat-label">COMPLETED</span>
+        <span class="stat-value green" id="stat-done">0</span>
+      </div>
+      <div class="stat-sep"></div>
+      <div class="stat-block">
+        <span class="stat-label">WEEK EVENTS</span>
+        <span class="stat-value" id="stat-week-events">0</span>
+      </div>
+      <div class="stat-sep"></div>
+      <div class="stat-block">
+        <span class="stat-label">REMINDERS</span>
+        <span class="stat-value red" id="stat-reminders">0</span>
+      </div>
+      <div class="stat-sep"></div>
+      <div class="stat-block stat-progress-block">
+        <span class="stat-label">PROGRESS</span>
+        <div class="stat-bar-wrap">
+          <div id="stat-bar-fill"></div>
+        </div>
+        <span class="stat-pct" id="stat-pct">0%</span>
+      </div>
+      <div class="stat-actions">
+        <button class="action-pill" id="open-event-modal-top">+ Event</button>
+        <button class="action-pill ghost" id="open-task-modal-top">+ Task</button>
+      </div>
+    </header>
+
+    <!-- VIEW CONTROLS (BusyCal-inspired) -->
+    <div id="view-controls">
+      <div class="vc-left">
+        <button class="vc-btn" id="view-prev">‹</button>
+        <button class="vc-btn today-pill" id="go-today">Today</button>
+        <button class="vc-btn" id="view-next">›</button>
+        <h2 id="view-label"></h2>
+      </div>
+      <div class="vc-tabs">
+        <button class="vc-tab active" data-view="week">Week</button>
+        <button class="vc-tab" data-view="month">Month</button>
+      </div>
+    </div>
+
+    <!-- WEEK VIEW (BusyCal + calendar.me hybrid) -->
+    <div id="week-view" class="cal-view active">
+      <div id="week-header"></div>
+      <div id="week-scroll">
+        <div id="week-time-labels"></div>
+        <div id="week-grid"></div>
+      </div>
+    </div>
+
+    <!-- MONTH VIEW (Fantastical-inspired) -->
+    <div id="month-view" class="cal-view">
+      <div id="month-dow-row"></div>
+      <div id="month-grid"></div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <aside id="right-panel">
+
+    <!-- TASK PANEL -->
+    <section class="rp-section" id="rp-tasks">
+      <div class="rp-hdr">
+        <span class="rp-title">TASKS</span>
+        <div class="rp-hdr-right">
+          <div class="task-filter-row">
+            <button class="tf-btn active" data-filter="all">ALL</button>
+            <button class="tf-btn" data-filter="today">TODAY</button>
+            <button class="tf-btn" data-filter="done">DONE</button>
+          </div>
+          <button class="rp-add" id="open-task-modal">+</button>
+        </div>
+      </div>
+      <div id="task-list"></div>
+      <div id="task-progress-row">
+        <div id="task-progress-bar"><div id="task-progress-fill"></div></div>
+        <span id="task-progress-label">0 / 0</span>
+      </div>
+    </section>
+
+    <!-- NOTEPAD -->
+    <section class="rp-section" id="rp-notes">
+      <div class="rp-hdr">
+        <span class="rp-title">NOTES</span>
+        <div class="rp-hdr-right">
+          <select id="note-selector"></select>
+          <button class="rp-add" id="new-note-btn">+</button>
+          <button class="rp-del" id="delete-note-btn">✕</button>
+        </div>
+      </div>
+      <input type="text" id="note-title" class="note-title-input" placeholder="Note title…" spellcheck="false" />
+      <textarea id="notepad" placeholder="Start writing…" spellcheck="false"></textarea>
+      <div class="note-footer">
+        <span id="note-word-count">0 words</span>
+        <span id="note-saved-status">● SAVED</span>
+      </div>
+    </section>
+
+    <!-- REMINDERS -->
+    <section class="rp-section" id="rp-reminders">
+      <div class="rp-hdr">
+        <span class="rp-title">REMINDERS</span>
+        <button class="rp-add" id="open-reminder-modal">+</button>
+      </div>
+      <div id="reminder-list"></div>
+    </section>
+
+  </aside>
+
+  <!-- EVENT FLYOUT (calendar.me style) -->
+  <div id="flyout-overlay" class="hidden"></div>
+  <div id="event-flyout" class="hidden">
+    <div class="flyout-hdr">
+      <div class="flyout-color-bar" id="flyout-color-bar"></div>
+      <div class="flyout-title-wrap">
+        <span id="flyout-title">Event</span>
+      </div>
+      <div class="flyout-btns">
+        <button id="flyout-edit">✎</button>
+        <button id="flyout-delete" class="danger">✕</button>
+        <button id="flyout-close">✕</button>
+      </div>
+    </div>
+    <div id="flyout-body"></div>
+  </div>
+
+  <!-- ═══ MODALS ═══ -->
+
+  <!-- EVENT MODAL -->
+  <div class="modal-overlay" id="event-modal">
+    <div class="modal">
+      <div class="modal-hdr">
+        <span id="event-modal-title">NEW EVENT</span>
+        <button class="modal-x" data-close="event-modal">✕</button>
+      </div>
+      <label>Title<input type="text" id="event-title-input" placeholder="Event name…" /></label>
+      <label>Date<input type="date" id="event-date-input" /></label>
+      <div class="form-row">
+        <label>Start<input type="time" id="event-start-input" /></label>
+        <label>End<input type="time" id="event-end-input" /></label>
+      </div>
+      <label>Label<div class="label-pick-row" id="event-label-select"></div></label>
+      <label>Notes<textarea id="event-notes-input" placeholder="Optional…"></textarea></label>
+      <div class="modal-ftr">
+        <button class="btn-ghost" data-close="event-modal">Cancel</button>
+        <button class="btn-solid" id="save-event-btn">Save Event</button>
+      </div>
+      <input type="hidden" id="event-edit-id" />
+    </div>
+  </div>
+
+  <!-- TASK MODAL -->
+  <div class="modal-overlay" id="task-modal">
+    <div class="modal">
+      <div class="modal-hdr">
+        <span id="task-modal-title">NEW TASK</span>
+        <button class="modal-x" data-close="task-modal">✕</button>
+      </div>
+      <label>Title<input type="text" id="task-title-input" placeholder="Task name…" /></label>
+      <div class="form-row">
+        <label>Due<input type="date" id="task-due-input" /></label>
+        <label>Priority
+          <select id="task-priority-input">
+            <option value="low">Low</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+            <option value="critical">Critical</option>
+          </select>
+        </label>
+      </div>
+      <label>Label<div class="label-pick-row" id="task-label-select"></div></label>
+      <label>Notes<textarea id="task-notes-input" placeholder="Optional…"></textarea></label>
+      <div class="modal-ftr">
+        <button class="btn-ghost" data-close="task-modal">Cancel</button>
+        <button class="btn-solid" id="save-task-btn">Save Task</button>
+      </div>
+      <input type="hidden" id="task-edit-id" />
+    </div>
+  </div>
+
+  <!-- REMINDER MODAL -->
+  <div class="modal-overlay" id="reminder-modal">
+    <div class="modal">
+      <div class="modal-hdr">
+        <span>NEW REMINDER</span>
+        <button class="modal-x" data-close="reminder-modal">✕</button>
+      </div>
+      <label>Message<input type="text" id="reminder-msg-input" placeholder="What to remember…" /></label>
+      <div class="form-row">
+        <label>Date<input type="date" id="reminder-date-input" /></label>
+        <label>Time<input type="time" id="reminder-time-input" /></label>
+      </div>
+      <label>Label<div class="label-pick-row" id="reminder-label-select"></div></label>
+      <div class="modal-ftr">
+        <button class="btn-ghost" data-close="reminder-modal">Cancel</button>
+        <button class="btn-solid" id="save-reminder-btn">Set Reminder</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LABEL MANAGER -->
+  <div class="modal-overlay" id="label-modal">
+    <div class="modal" style="max-width:380px">
+      <div class="modal-hdr">
+        <span>LABEL MANAGER</span>
+        <button class="modal-x" data-close="label-modal">✕</button>
+      </div>
+      <div id="label-list-display"></div>
+      <div class="label-creator">
+        <input type="text" id="new-label-name" placeholder="Label name…" maxlength="24" />
+        <div class="color-row">
+          <input type="color" id="new-label-color" value="#c2715a" title="Pick color" />
+          <div id="color-presets"></div>
+        </div>
+        <button class="btn-solid full" id="create-label-btn">Create Label</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+
+  <script src="app.js"></script>
 </body>
 </html>
