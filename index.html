@@ -9,6 +9,32 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=JetBrains+Mono:wght@300;400;500;700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet" />
 </head>
+  <!-- Supabase JS SDK (CDN) — must load before any other scripts -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  <script>
+/* ══════════════════════════════════════════════════
+   SUPABASE CONFIGURATION
+   Replace the two values below with your own.
+   Project Settings → API in the Supabase dashboard.
+══════════════════════════════════════════════════ */
+const SUPABASE_URL  = 'https://YOUR-PROJECT-ID.supabase.co';  // ← replace
+const SUPABASE_ANON = 'YOUR-ANON-PUBLIC-KEY';                 // ← replace
+
+// Create the client once and expose it as a global.
+// Both auth.js and app.js reference it via window._supabase.
+window._supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+  auth: {
+    persistSession:     true,   // keep session across page reloads
+    autoRefreshToken:   true,   // silently refresh JWT before it expires
+    detectSessionInUrl: true,   // required for email magic-link / OAuth flows
+  },
+});
+
+// Placeholder for the logged-in user's UUID.
+// Populated by revealDashboard() so that SB._uid() works in app.js.
+window._currentUserId = null;
+</script>
 <body>
 
   <!-- LEFT SIDEBAR (Fantastical-inspired) -->
