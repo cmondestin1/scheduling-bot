@@ -5,28 +5,81 @@
  */
 'use strict';
 
-/* ═══════════ DATA LAYER ═══════════ */
+/* ═══════════ DATA LAYER — Supabase ═══════════
+   SB.fetch(table)        → all rows for the current user
+   SB.upsert(table, row)  → insert or update one row (by primary key)
+   SB.remove(table, id)   → delete one row
+   window._currentUserId  → UUID set by revealDashboard() in index.html
+═══════════════════════════════════════════════ */
+const SB = {
+  _uid: () => window._currentUserId,
+
+  fetch: async (table) => {
+    const { data, error } = await window._supabase
+      .from(table).select('*')
+      .eq('user_id', SB._uid())
+      .order('created_at', { ascending: true });
+    if (error) { console.error('SB.fetch', table, error); return []; }
+    return data ?? [];
+  },
+
+  upsert: async (table, row) => {
+    const { error } = await window._supabase
+      .from(table)
+      .upsert({ ...row, user_id: SB._uid() }, { onConflict: 'id' });
+    if (error) console.error('SB.upsert', table, error);
+  },
+
+  remove: async (table, id) => {
+    const { error } = await window._supabase
+      .from(table).delete()
+      .eq('id', id).eq('user_id', SB._uid());
+    if (error) console.error('SB.remove', table, error);
+  },
+
+  fetchPrefs: async () => {
+    const { data } = await window._supabase
+      .from('preferences').select('*')
+      .eq('user_id', SB._uid()).maybeSingle();
+    return data;
+  },
+
+  savePrefs: async (prefs) => {
+    await window._supabase.from('preferences')
+      .upsert({ ...prefs, user_id: SB._uid() }, { onConflict: 'user_id' });
+  },
+};
+
+// Thin localStorage shim — kept ONLY for instant theme caching (no flash on reload)
 const DB = {
-  get:  (k, d=null) => { try { const v = localStorage.getItem(k); return v !== null ? JSON.parse(v) : d; } catch { return d; } },
-  set:  (k, v)      => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  get: (k, d=null) => { try { const v = localStorage.getItem(k); return v !== null ? JSON.parse(v) : d; } catch { return d; } },
+  set: (k, v)      => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+// Thin localStorage shim — kept ONLY for instant theme caching (no flash on reload)
+const DB = {
+  get: (k, d=null) => { try { const v = localStorage.getItem(k); return v !== null ? JSON.parse(v) : d; } catch { return d; } },
+  set: (k, v)      => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 function todayStr() { return new Date().toISOString().slice(0,10); }
 
+// State starts empty — populated from Supabase inside init().
+// Theme is pre-loaded from localStorage to avoid a flash of the wrong theme.
 const state = {
-  events:      DB.get('apx2_events',    []),
-  tasks:       DB.get('apx2_tasks',     []),
-  reminders:   DB.get('apx2_reminders', []),
-  notes:       DB.get('apx2_notes',     [{ id: uid(), title: 'Quick Notes', body: '', updated: Date.now() }]),
-  labels:      DB.get('apx2_labels',    defaultLabels()),
-  activeNote:  DB.get('apx2_note',      null),
-  taskFilter:  'all',
-  view:        'week',     // 'week' | 'month'
-  viewDate:    new Date(), // anchor date for current view
+  events:       [],
+  tasks:        [],
+  reminders:    [],
+  notes:        [],
+  labels:       [],
+  activeNote:   null,
+  taskFilter:   'all',
+  view:         'week',
+  viewDate:     new Date(),
   selectedDate: todayStr(),
   flyoutEventId: null,
-  theme: DB.get('apx2_theme', 'dark'),
+  theme: DB.get('apx2_theme', 'dark'),  // localStorage cache — instant on reload
 };
 
 function defaultLabels() {
@@ -39,14 +92,51 @@ function defaultLabels() {
   ];
 }
 
+/* ─── Targeted Supabase save helpers ─────────────────────────────────────────
+   Call the specific helper after each mutation instead of the old save().
+   Column names map app camelCase → DB snake_case.
+──────────────────────────────────────────────────────────────────────────── */
+async function saveEvent(ev) {
+  await saveEvent({ id: ev.id, title: ev.title, date: ev.date,
+    start_time: ev.start, end_time: ev.end, notes: ev.notes, label_id: ev.labelId });
+}
+async function deleteEvent(id)    { await deleteEvent(state.flyoutEventId); }
+
+async function saveTask(t) {
+  await saveTask({ id: t.id, title: t.title, due: t.due,
+    priority: t.priority, notes: t.notes, label_id: t.labelId, done: t.done });
+}
+async function deleteTask(id)     { await deleteTask(delBtn.dataset.id); }
+
+async function saveReminder(r) {
+  await saveReminder({ id: r.id, msg: r.msg, date: r.date,
+    time: r.time, label_id: r.labelId, fired: r.fired });
+}
+async function deleteReminder(id) { await deleteReminder(e.target.dataset.id); }
+
+async function saveNote(n) {
+  await saveNote('notes', { id: n.id, title: n.title, body: n.body, updated_at: n.updated });
+}
+async function deleteNote(id)     { await deleteNote(state.activeNote); }
+
+async function saveLabel(l)       { await saveLabel('labels', { id: l.id, name: l.name, color: l.color }); }
+async function deleteLabel(id)    { await deleteLabel(e.target.dataset.id); }
+
+async function savePrefs() {
+  DB.set('apx2_theme', state.theme);                              // keep localStorage cache for instant load
+  await savePrefs({ theme: state.theme, active_note: state.activeNote });
+}
+
+// Legacy shim — keeps existing save() call sites working while you migrate them.
+// The shim fires-and-forgets all tables. Migrate each call site to the targeted
+// helpers above using the table in Step 9, then you can delete this shim.
 function save() {
-  DB.set('apx2_events',    state.events);
-  DB.set('apx2_tasks',     state.tasks);
-  DB.set('apx2_reminders', state.reminders);
-  DB.set('apx2_notes',     state.notes);
-  DB.set('apx2_labels',    state.labels);
-  DB.set('apx2_note',      state.activeNote);
-  DB.set('apx2_theme',     state.theme);
+  state.events.forEach(saveEvent);
+  state.tasks.forEach(saveTask);
+  state.reminders.forEach(saveReminder);
+  state.notes.forEach(saveNote);
+  state.labels.forEach(saveLabel);
+  savePrefs();
 }
 
 const MONTHS = ['January','February','March','April','May','June',
@@ -847,14 +937,62 @@ document.addEventListener('keydown', e => {
 setInterval(() => { if (state.view==='week') renderWeekView(); }, 60000);
 
 /* ═══════════ INIT ═══════════ */
-function init() {
+async function init() {
   applyTheme();
   startClock();
 
-  if (!state.activeNote || !state.notes.find(n=>n.id===state.activeNote)) {
-    state.activeNote = state.notes[0]?.id||null;
+  // ── Load all user data from Supabase in parallel ─────────────────────────
+  const [evRaw, tkRaw, rmRaw, ntRaw, lbRaw, prefs] = await Promise.all([
+    SB.fetch('events'),
+    SB.fetch('tasks'),
+    SB.fetch('reminders'),
+    SB.fetch('notes'),
+    SB.fetch('labels'),
+    SB.fetchPrefs(),
+  ]);
+
+  // ── Map DB snake_case column names → app camelCase field names ────────────
+  state.events    = evRaw.map(e => ({
+    id: e.id, title: e.title, date: e.date,
+    start: e.start_time, end: e.end_time,
+    notes: e.notes, labelId: e.label_id,
+  }));
+  state.tasks     = tkRaw.map(t => ({
+    id: t.id, title: t.title, due: t.due,
+    priority: t.priority, notes: t.notes,
+    labelId: t.label_id, done: t.done,
+  }));
+  state.reminders = rmRaw.map(r => ({
+    id: r.id, msg: r.msg, date: r.date,
+    time: r.time, labelId: r.label_id, fired: r.fired,
+  }));
+  state.notes     = ntRaw.map(n => ({
+    id: n.id, title: n.title, body: n.body, updated: n.updated_at,
+  }));
+  state.labels    = lbRaw.length > 0
+    ? lbRaw.map(l => ({ id: l.id, name: l.name, color: l.color }))
+    : defaultLabels();  // seed defaults for first-time users
+
+  // ── First-login seeding ───────────────────────────────────────────────────
+  if (lbRaw.length === 0) state.labels.forEach(saveLabel);   // write default labels
+
+  if (state.notes.length === 0) {
+    const starter = { id: uid(), title: 'Quick Notes', body: '', updated: Date.now() };
+    state.notes.push(starter);
+    await saveNote(starter);
   }
 
+  // ── Restore user preferences ──────────────────────────────────────────────
+  if (prefs) {
+    if (prefs.theme)       { state.theme = prefs.theme; applyTheme(); }
+    if (prefs.active_note) { state.activeNote = prefs.active_note; }
+  }
+
+  if (!state.activeNote || !state.notes.find(n => n.id === state.activeNote)) {
+    state.activeNote = state.notes[0]?.id || null;
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
   renderMiniCal();
   renderSidebarAgenda();
   renderSidebarLabels();
