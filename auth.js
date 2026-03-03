@@ -96,34 +96,30 @@
 })();
 
 /* ════════════════════
-   AUTH STORAGE
+   AUTH STORAGE — Supabase
+   getUsers / saveUsers removed: Supabase Auth manages the user list.
+   Session methods now wrap window._supabase.auth (initialized in index.html).
 ════════════════════ */
 const AuthDB = {
-  getUsers: () => { try { return JSON.parse(localStorage.getItem('apex_users') || '[]'); } catch { return []; } },
-  saveUsers: (u) => localStorage.setItem('apex_users', JSON.stringify(u)),
-  setSession: (email, name, remember) => {
-    const store = remember ? localStorage : sessionStorage;
-    store.setItem('apex_session', JSON.stringify({ email, name, ts: Date.now() }));
+  // Supabase stores its JWT session automatically — nothing extra to do here.
+  setSession: () => {},
+
+  // Returns { email, name, id } from the live Supabase session, or null.
+  getSession: async () => {
+    const { data: { session } } = await window._supabase.auth.getSession();
+    if (!session) return null;
+    return {
+      email: session.user.email,
+      name:  session.user.user_metadata?.full_name || session.user.email,
+      id:    session.user.id,
+    };
   },
-  getSession: () => {
-    try {
-      const ls = localStorage.getItem('apex_session');
-      const ss = sessionStorage.getItem('apex_session');
-      return ls ? JSON.parse(ls) : ss ? JSON.parse(ss) : null;
-    } catch { return null; }
-  },
-  clearSession: () => {
-    localStorage.removeItem('apex_session');
-    sessionStorage.removeItem('apex_session');
+
+  // Signs the user out via Supabase.
+  clearSession: async () => {
+    await window._supabase.auth.signOut();
   },
 };
-
-// If already logged in, redirect to dashboard
-const session = AuthDB.getSession();
-if (session) {
-  const isAuthPage = window.location.pathname.includes('auth');
-  if (isAuthPage) window.location.href = 'index.html';
-}
 
 /* ════════════════════
    TAB SWITCHING
@@ -285,7 +281,7 @@ document.getElementById('su-name').addEventListener('blur', () => {
 document.getElementById('signup-btn').addEventListener('click', handleSignup);
 document.getElementById('su-confirm').addEventListener('keydown', e => { if(e.key==='Enter') handleSignup(); });
 
-function handleSignup() {
+async function handleSignup() {
   let valid = true;
   clearAllErrors();
 
@@ -323,33 +319,40 @@ function handleSignup() {
 
   if (!valid) return;
 
-  // Check if email already registered
-  const users = AuthDB.getUsers();
-  if (users.find(u => u.email.toLowerCase() === email.toLowerCase())) {
-    setError('su-email-err', 'An account with this email already exists.');
-    markField('su-email', false); return;
-  }
-
-  // Simulate async (loading state)
   const btn = document.getElementById('signup-btn');
   btn.classList.add('loading');
   btn.disabled = true;
 
-  setTimeout(() => {
-    // Hash simulation (NOT real security — use server-side bcrypt in production)
-    const mockHash = btoa(email + pw + 'apex_salt_v2');
-    users.push({ name, email: email.toLowerCase(), pwHash: mockHash, created: Date.now() });
-    AuthDB.saveUsers(users);
-    AuthDB.setSession(email.toLowerCase(), name, false);
+  try {
+    const { error } = await window._supabase.auth.signUp({
+      email:   email.toLowerCase(),
+      password: pw,
+      options: { data: { full_name: name } },  // stored in user_metadata
+    });
 
-    btn.classList.remove('loading');
-    btn.disabled = false;
+    if (error) {
+      const msg = error.message.toLowerCase();
+      if (msg.includes('already registered') || msg.includes('already exists')) {
+        setError('su-email-err', 'An account with this email already exists.');
+        markField('su-email', false);
+      } else {
+        setError('su-email-err', error.message);
+      }
+      btn.classList.remove('loading'); btn.disabled = false;
+      return;
+    }
 
-    // Show success
+    btn.classList.remove('loading'); btn.disabled = false;
+
+    // Show success screen
     document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
     document.getElementById('form-success').classList.add('active');
     document.getElementById('auth-tabs').style.display = 'none';
-  }, 900);
+
+  } catch (err) {
+    setError('su-email-err', 'Sign-up failed. Please try again.');
+    btn.classList.remove('loading'); btn.disabled = false;
+  }
 }
 
 /* ════════════════════
@@ -358,7 +361,7 @@ function handleSignup() {
 document.getElementById('login-btn').addEventListener('click', handleLogin);
 document.getElementById('li-password').addEventListener('keydown', e => { if(e.key==='Enter') handleLogin(); });
 
-function handleLogin() {
+async function handleLogin() {
   clearAllErrors();
   const banner = document.getElementById('login-error-banner');
   banner.classList.add('hidden');
@@ -379,28 +382,36 @@ function handleLogin() {
   const btn = document.getElementById('login-btn');
   btn.classList.add('loading'); btn.disabled = true;
 
-  setTimeout(() => {
+  try {
+    const { data, error } = await window._supabase.auth.signInWithPassword({
+      email:    email.toLowerCase(),
+      password: pw,
+    });
+
     btn.classList.remove('loading'); btn.disabled = false;
 
-    const users = AuthDB.getUsers();
-    const user  = users.find(u => u.email === email.toLowerCase());
-    const mockHash = btoa(email.toLowerCase() + pw + 'apex_salt_v2');
-
-    if (!user || user.pwHash !== mockHash) {
+    if (error) {
       document.getElementById('login-error-msg').textContent = 'Incorrect email or password.';
       banner.classList.remove('hidden');
       markField('li-password', false);
-      // Shake animation
       const card = document.getElementById('auth-card');
-      card.style.animation = 'none';
-      card.offsetHeight; // reflow
+      card.style.animation = 'none'; card.offsetHeight;
       card.style.animation = 'shake .4s ease';
       return;
     }
 
-    AuthDB.setSession(user.email, user.name, remember);
-    window.location.href = 'index.html';
-  }, 700);
+    // Hand the verified session to the orchestration layer
+    revealDashboard({
+      email: data.user.email,
+      name:  data.user.user_metadata?.full_name || data.user.email,
+      id:    data.user.id,
+    });
+
+  } catch (err) {
+    btn.classList.remove('loading'); btn.disabled = false;
+    document.getElementById('login-error-msg').textContent = 'Login failed. Please try again.';
+    banner.classList.remove('hidden');
+  }
 }
 
 /* ════════════════════
@@ -428,9 +439,11 @@ document.getElementById('forgot-pw-btn').addEventListener('click', () => {
 /* ════════════════════
    GO TO DASHBOARD
 ════════════════════ */
-document.getElementById('goto-dashboard').addEventListener('click', () => {
-  window.location.href = 'index.html';
+document.getElementById('goto-dashboard').addEventListener('click', async () => {
+  const sess = await AuthDB.getSession();
+  revealDashboard(sess);
 });
+
 
 /* ════════════════════
    SHAKE ANIMATION (inject dynamically)
@@ -449,12 +462,4 @@ shakeStyle.textContent = `
 `;
 document.head.appendChild(shakeStyle);
 
-/* ════════════════════
-   DASHBOARD SESSION CHECK
-   (Add this block to index.html's app.js to guard the dashboard)
-════════════════════ */
-// Uncomment the lines below in app.js to enable auth guard on the dashboard:
-/*
-const _sess = AuthDB.getSession();
-if (!_sess) window.location.href = 'auth.html';
-*/
+
